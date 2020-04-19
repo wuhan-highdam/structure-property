@@ -5,12 +5,12 @@ Script to compute the structure property of the whole system.
 Use conditions: [1] Cuboid sample
                 [2] Aperiodic boundary
                 [3] Monosize sample
-Usage: python structure-property.py -path '' -path_output '' -frame 154000
+Usage: python structure-property.py -scenario 1000
 '''
 # Reference:
-# [1] A transferable machine learning framework linking interstice distribution and plastic heterogeneity in metallic glasses.
-# [2] Structure-property relationships from universal signatures of plasticity in disordered solids.
-# [3] Identifying structural ﬂow defects in disordered solids using machine learning methods.
+# [1] Qi Wang* & Anubhav Jain*. A transferable machine learning framework linking interstice distribution and plastic heterogeneity in metallic glasses.
+# [2] E.D.Cubuk* R.J.S.Ivancic* S.S.Schoenholz*.Structure-property relationships from universal signatures of plasticity in disordered solids.
+# [3] E. D. Cubuk,1,∗ S. S. Schoenholz (Equal contribution),2,† J. M. Rieser. Identifying structural ﬂow defects in disordered solids using machine learning methods.
 from __future__ import division
 import re
 import math
@@ -22,7 +22,7 @@ import openpyxl
 import pandas as pd
 import numpy as np
 from numba import jit
-from sys import argv
+from sys import argv, exit
 from scipy.spatial import KDTree, ConvexHull
 
 
@@ -41,7 +41,7 @@ def mkdir(path_write):
         print('目录已存在')
 
 
-# ======================================================================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 @jit(nopython=True)
 def compute_cos_ijk(posi, posj, posk):
     # 计算向量ij与ik的夹角的cos值
@@ -93,10 +93,10 @@ def compute_simplice_area(vertice1, vertice2, vertice3):
     return (np.linalg.norm(eik)) * h / 2
 
 
-# ======================================================================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-# ======================================================================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 @jit(nopython=True)
 def compute_angular_element(neigh_id_input, distance_input, points_input, a_list, b_list, c_list, radius, like_input,
                             neigh_id_length_index_input):
@@ -271,10 +271,10 @@ def compute_symmetry_functions(points, radius):
     return symmetry_function_value
 
 
-# ======================================================================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-# ======================================================================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def compute_interstice_distance(voronoi_neighbour_use_input, distance_input, radius_input):
     interstice_distance_in = []
     for a in range(len(voronoi_neighbour_use_input)):
@@ -552,10 +552,10 @@ def compute_interstice_distribution(neighbour, points, radius):
     return MRO_interstice_distribution
 
 
-# ======================================================================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-# ======================================================================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def compute_coordination_number_by_cutoff_distance(points_input, radius_input):
     maxdistance = 3.0 * radius_input[0]
     kdtree = KDTree(points_input)
@@ -627,7 +627,7 @@ def compute_weight_i_fold_symm(voro_input, area_all_input):
 
 def compute_voronoi_idx(voro_input):
     # Reference: [1] Structure-property relationships from universal signatures of plasticity in disordered solids.
-    #            [2] Structural signature of plastic deformation in metallic glasses.
+    #            [2] H.L.Peng M.Z.Li* and W.H.Wang. Structural signature of plastic deformation in metallic glasses.
     particle_number = len(voro_input)
     voronoi_idx = {}
     i_fold_symm = {}
@@ -978,10 +978,10 @@ def compute_conventional_feature(points, area_all, neighbour, voronoi, radius):
     return feature_MRO_out.T
 
 
-# ======================================================================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-# ======================================================================================================================
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def read_position_information(dump_path, frame):
     # 读取颗粒位置信息
     particle_info = open(dump_path + '/dump-' + str(frame) + '.sample', 'r')
@@ -1063,31 +1063,101 @@ def compute_voronoi_neighbour(points, radius, limits):
     return voronoi, neighbour, area
 
 
-def main_function(path, path_output, frame):
-    # step1. Gets the prepared coordinates information and neighborhood information
-    Par_coord, Par_radius, boundary = read_position_information(path, frame)
-    voronoi, voronoi_neighbour, area_all = compute_voronoi_neighbour(Par_coord, Par_radius, boundary)
-    # step2. Compute structure property(symmetry feature, interstice distribution and conventional feature)
-    symmetry_feature = compute_symmetry_functions(points=Par_coord, radius=Par_radius)
-    interstice_distribution = compute_interstice_distribution(neighbour=voronoi_neighbour, points=Par_coord,
-                                                              radius=Par_radius)
-    conventional_feature = compute_conventional_feature(points=Par_coord, area_all=area_all,
-                                                        neighbour=voronoi_neighbour, voronoi=voronoi, radius=Par_radius)
-    # step3. Output structure property
-    writer = pd.ExcelWriter(path_output + '/feature_all-' + str(frame) + '.xlsx')
-    pd.DataFrame(symmetry_feature).to_excel(writer, sheet_name='symmetry feature')
-    pd.DataFrame(interstice_distribution).to_excel(writer, sheet_name='interstice distribution')
-    pd.DataFrame(conventional_feature).to_excel(writer, sheet_name='conventional feature')
-    writer.save()
-    writer.close()
+def main_function(path, path_output, scenario):
+    # dump files
+    mkdir(path_output)
+    dump_path = path
+    list_dir = os.listdir(dump_path)
+    dump_frame = []
+    file_prefix = 'dump-'
+    file_suffix = '.sample'
+    prefix_len = len(file_prefix)
+    suffix_len = len(file_suffix)
+    for file in list_dir:
+        dump_frame.append(int(file[prefix_len:][:-suffix_len]))
+    dump_frame = sorted(dump_frame)
+    start_frame = np.min(dump_frame)
+    end_frame = np.max(dump_frame)
+    frame_interval = (end_frame - start_frame) / scenario
+    frame_list = np.arange(start_frame, end_frame, frame_interval)
+    frame_list = np.append(frame_list, end_frame)
+    frame_list = frame_list.astype(int)
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # 循环开始，提取每一步数据
+    #
+    for idx, frame in enumerate(frame_list):
+        if idx == 0: continue
+        # step1. Gets the prepared coordinates information and neighborhood information
+        Par_coord, Par_radius, boundary = read_position_information(path, frame)
+        voronoi, voronoi_neighbour, area_all = compute_voronoi_neighbour(Par_coord, Par_radius, boundary)
+        print(60 * '*')
+        print('The %d th frame' % frame)
+        print(60 * '*')
+        # step2. Compute structure property(symmetry feature, interstice distribution and conventional feature)
+        symmetry_feature = compute_symmetry_functions(points=Par_coord, radius=Par_radius)
+        interstice_distribution = compute_interstice_distribution(neighbour=voronoi_neighbour, points=Par_coord,
+                                                                  radius=Par_radius)
+        conventional_feature = compute_conventional_feature(points=Par_coord, area_all=area_all,
+                                                            neighbour=voronoi_neighbour, voronoi=voronoi,
+                                                            radius=Par_radius)
+        # step3. Output structure property
+        writer = pd.ExcelWriter(path_output + '/feature_all-' + str(frame) + '.xlsx')
+        pd.DataFrame(symmetry_feature).to_excel(writer, sheet_name='symmetry feature')
+        pd.DataFrame(interstice_distribution).to_excel(writer, sheet_name='interstice distribution')
+        pd.DataFrame(conventional_feature).to_excel(writer, sheet_name='conventional feature')
+        writer.save()
+        writer.close()
 
 
 # ==================================================================
 # S T A R T
 #
 if __name__ == '__main__':
-    argList = argv
     path_ = 'D:/循环剪切试验和机器学习/cyc5300fric01shearrate025/sort position'
     path_output_ = 'D:/循环剪切试验和机器学习/cyc5300fric01shearrate025'
-    frame_ = 15400000
-    main_function(path_, path_output_, frame_)
+    scenario = 1000
+    argList = argv
+    argc = len(argList)
+    i = 0
+    while (i < argc):
+        if (argList[i][:2] == "-c"):
+            i += 1
+            case = str(argList[i])
+        elif (argList[i][:2] == "-t"):
+            i += 1
+            test_id = int(argList[i])
+        elif (argList[i][:4] == "-str"):
+            i += 1
+            shear_strain = float(argList[i])
+        elif (argList[i][:2] == "-w"):
+            i += 1
+            strain_window = float(argList[i])
+        elif (argList[i][:4] == "-rat"):
+            i += 1
+            shear_rate = float(argList[i])
+        elif (argList[i][:2] == "-n"):
+            i += 1
+            neighborhood_size = float(argList[i])
+        elif (argList[i][:4] == "-dis"):
+            i += 1
+            distance = str(argList[i])
+        elif (argList[i][:3] == "-lb"):
+            i += 1
+            start_strain = float(argList[i])
+        elif (argList[i][:3] == "-ub"):
+            i += 1
+            end_strain = float(argList[i])
+        elif (argList[i][:4] == "-ran"):
+            i += 1
+            strain_interval = float(argList[i])
+        elif (argList[i][:4] == "-sce"):
+            i += 1
+            scenario = int(argList[i])
+        elif (argList[i][:2] == "-h"):
+            print(__doc__)
+            exit(0)
+        i += 1
+
+    print(path_)
+    print("Running scenario:  %d" % scenario)
+    main_function(path_, path_output_, scenario)
