@@ -23,6 +23,7 @@ import pandas as pd
 import numpy as np
 from numba import jit
 from sys import argv, exit
+from scipy import special
 from scipy.spatial import KDTree, ConvexHull
 
 
@@ -91,6 +92,32 @@ def compute_simplice_area(vertice1, vertice2, vertice3):
     eik = np.array([vertice3[0] - vertice1[0], vertice3[1] - vertice1[1], vertice3[2] - vertice1[2]])
     h = (np.dot(eij, eij) - (np.dot(eij, eik) / (np.linalg.norm(eik))) ** 2) ** 0.5
     return (np.linalg.norm(eik)) * h / 2
+
+
+def calc_beta_rad(pvec):
+    """
+    polar angle [0, pi]
+    """
+    return np.arccos(pvec[2])  # arccos:[0, pi]
+
+
+def calc_gamma_rad(pvec):
+    """
+    azimuth angle [0, 2pi]
+    """
+    gamma = np.arctan2(pvec[1], pvec[0])
+    if gamma < 0.0:
+        gamma += 2 * np.pi
+    return gamma
+
+
+def vertex_distance(a, b):
+    return np.sqrt((a[0] - b[0]) ** 2.0 + (a[1] - b[1]) ** 2.0 + (a[2] - b[2]) ** 2.0)
+
+
+def unit_vector(vector):
+    """ Returns the unit vector of the vector.  """
+    return vector / np.linalg.norm(vector)
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -775,6 +802,81 @@ def compute_boop(voronoi_neighbour, points, radius):
     return boop_all
 
 
+def compute_modified_boop(voronoi, points, area_all):
+    # 4.Bond orientation order parameter(BOO) and modified BOO
+    #
+    # A Python package to compute bond orientational order parameters as defined by Steinhardt Physical Review B (1983) doi:10.1103/PhysRevB.28.784.
+    #
+    # Steinhardt’s bond orientational order parameter is a popular method (>20k citations of the original paper) to identify local symmetries in an assembly of particles in 3D.
+    # It can be used in particle-based simulations (typically molecular dynamics, brownian dynamics, monte-carlo, etc.)
+    # or in particle-tracking experiments (colloids, granular materials) where the coordinates of all particles are known.
+    # reference:
+    # [1] https://pyboo.readthedocs.io/en/latest/intro.html
+    # [2] Xia, C. et al. The structural origin of the hard-sphere glass transition in granular packing. Nat. Commun. 6, 1–9 (2015).
+    # [3] Teich, E. G., Van Anders, G., Klotsa, D., Dshemuchadse, J. & Glotzer, S. C. Clusters of polyhedra in spherical confinement. Proc. Natl. Acad. Sci. U. S. A. (2016). doi:10.1073/pnas.1524875113
+    # [4] Leocmach, M. & Tanaka, H. Roles of icosahedral and crystal-like order in the hard spheres glass transition. Nat. Commun. (2012). doi:10.1038/ncomms1974
+    ql = np.zeros(shape=[len(points), 10])
+    for i in range(len(points)):
+        area_now = area_all[i]
+        faces = voronoi[i]['faces']
+        adjacent_cell = []
+        for y in range(len(faces)):
+            adjacent_cell.append(faces[y]['adjacent_cell'])
+        pt_coord = np.zeros(shape=[len(adjacent_cell), 3])
+        for j in range(len(adjacent_cell)):
+            if adjacent_cell[j] >= 0:
+                pt_coord[j][0] = points[adjacent_cell[j]][0]
+                pt_coord[j][1] = points[adjacent_cell[j]][1]
+                pt_coord[j][2] = points[adjacent_cell[j]][2]
+            else:
+                pt_coord[j][0] = 0.0
+                pt_coord[j][1] = 0.0
+                pt_coord[j][2] = 0.0
+        sum_area = 0.0
+        for j in range(len(adjacent_cell)):
+            if adjacent_cell[j] >= 0:
+                sum_area += area_now[j]
+        area_weight = np.zeros(shape=[len(adjacent_cell), ])
+        for j in range(len(adjacent_cell)):
+            if adjacent_cell[j] >= 0:
+                area_weight[j] = area_now[j] / sum_area
+            if adjacent_cell[j] < 0:
+                area_weight[j] = 0.0
+        for j in range(10):
+            ql[i][j] = boo_ql(points[i], pt_coord, area_weight, l=j+1, modified=True)
+    return ql
+
+
+def boo_ql(origin, pt_coord, area_weight, l, modified):
+    # l: order of symmetry
+    # origin: center of the cluster
+    # pt_coord:
+    m_list = np.arange(-l, l + 1, 1)
+    pt_num = len(pt_coord)
+    qlm = np.zeros(len(m_list)).astype(complex)
+    bond_weight = np.zeros(pt_num)
+    polar_angle = np.zeros(pt_num)
+    azimuth_angle = np.zeros(pt_num)
+    for j in range(pt_num):
+        bond_weight[j] = area_weight[j]
+        bond = unit_vector((pt_coord[j] - origin))
+        polar_angle[j] = calc_beta_rad(bond)
+        azimuth_angle[j] = calc_gamma_rad(bond)
+    sum_weight = np.sum(bond_weight)
+    if modified:
+        for i, m in enumerate(m_list):
+            for j in range(pt_num):
+                qlm[i] += special.sph_harm(m, l, azimuth_angle[j], polar_angle[j]) * bond_weight[j] / sum_weight
+    else:
+        for i, m in enumerate(m_list):
+            for j in range(pt_num):
+                qlm[i] += special.sph_harm(m, l, azimuth_angle[j], polar_angle[j])
+            qlm[i] /= pt_num
+    ql = np.sum(np.abs(qlm) ** 2.0)
+    ql = np.sqrt(4 * np.pi / (2 * l + 1) * ql)
+    return ql
+
+
 def compute_cluster_packing_efficiency(voronoi_neighbour_use_input, points_input, radius_input):
     # compute cluster packing efficiency
     # Reference: Yang, L. et al. Atomic-scale mechanisms of the glass-forming ability in metallic glasses. Phys. Rev. Lett. 109, 105502 (2012).
@@ -834,8 +936,8 @@ def compute_cluster_packing_efficiency_single_particle(simplice_input, points_no
 
 
 @jit(nopython=True)
-def MRO(old_feature_SRO_array_input, boop_SRO_array_input, cpe_SRO_array_input, MRO_array_input, f_use_array_input,
-        voronoi_neighbour_input, neigh_id_length_index_input):
+def MRO(old_feature_SRO_array_input, boop_SRO_array_input, modified_boop_SRO_array, cpe_SRO_array_input, MRO_array_input,
+        f_use_array_input, voronoi_neighbour_input, neigh_id_length_index_input):
     feature_MRO = np.empty_like(MRO_array_input)
     for aa in range(18):
         a = 5 * aa
@@ -896,6 +998,24 @@ def MRO(old_feature_SRO_array_input, boop_SRO_array_input, cpe_SRO_array_input, 
         feature_now = boop_SRO_array_input[:, aa + 20]
         for b in range(len(voronoi_neighbour_input)):
             feature_MRO[a][b] = feature_now[b]
+    for aa in range(10):
+        a = aa * 5 + 215
+        feature_now = modified_boop_SRO_array[:, aa]
+        for b in range(len(voronoi_neighbour_input)):
+            f_use_not = np.zeros_like(f_use_array_input)
+            for c in range(neigh_id_length_index_input[b]):
+                f_use_not[c] = feature_now[voronoi_neighbour_input[b][c]]
+            f_use = f_use_not[0: neigh_id_length_index_input[b]]
+            feature_MRO[a][b] = feature_now[b]
+            feature_MRO[a + 1][b] = np.min(f_use)
+            feature_MRO[a + 2][b] = np.max(f_use)
+            feature_MRO[a + 3][b] = np.mean(f_use)
+            mean = np.mean(f_use)
+            square = 0.0
+            for c in range(len(f_use)):
+                square += (f_use[c] - mean) ** 2
+            sqrt = math.sqrt((square / len(f_use)))
+            feature_MRO[a + 4][b] = sqrt
     return feature_MRO
 
 
@@ -919,7 +1039,7 @@ def zip_feature(Coordination_number_by_Voronoi_tessellation, Coordination_number
 def compute_conventional_feature(points, area_all, neighbour, voronoi, radius):
     # step1. set constant
     particle_number = len(points)
-    MRO_array = np.empty(shape=[215, particle_number])
+    MRO_array = np.empty(shape=[265, particle_number])
     f_use_array = np.empty(shape=[particle_number, ])
     # step1. modify voronoi neighbour information
     voronoi_neighbour = []
@@ -965,16 +1085,19 @@ def compute_conventional_feature(points, area_all, neighbour, voronoi, radius):
     # 2.6 zip feature above
     feature_all = zip_feature(Coordination_number_by_Voronoi_tessellation, Coordination_number_by_cutoff_distance,
                               Voronoi_idx, cellfraction, i_fold_symm, area_weight_i_fold_symm)
-    # 2.7 boop
+    # 2.7.1 boop
     boop_all = compute_boop(voronoi_neighbour, points, radius)
+    # 2.7.2 modified boop
+    modified_boop = compute_modified_boop(voronoi, points, area_all)
     # 2.8 cluster packing efficiency
     Cpe = compute_cluster_packing_efficiency(voronoi_neighbour_use, points, radius)
     # 2.9 MRO
     old_feature_SRO_array = feature_all
     boop_SRO_array = boop_all
+    modified_boop_SRO_array = modified_boop
     cpe_SRO_array = Cpe
-    feature_MRO_out = MRO(old_feature_SRO_array, boop_SRO_array, cpe_SRO_array, MRO_array, f_use_array, neigh_id,
-                          neigh_id_length_index)
+    feature_MRO_out = MRO(old_feature_SRO_array, boop_SRO_array, modified_boop_SRO_array, cpe_SRO_array, MRO_array,
+                          f_use_array, neigh_id, neigh_id_length_index)
     return feature_MRO_out.T
 
 
