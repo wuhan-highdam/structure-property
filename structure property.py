@@ -1313,7 +1313,7 @@ def main_function(path, path_output, scenario, MRO_option, Compute_feature_categ
                                                                         face_normal_vector=face_normal_vector,
                                                                         neighbour=voronoi_neighbour, voronoi=voronoi,
                                                                         radius=Par_radius, MRO_option=MRO_option)
-                    dict = ['oordination_number_by_Voronoi_tessellation', 'cellfraction', 'q1', 'q2', 'q3', 'q4',
+                    dict = ['coordination_number_by_Voronoi_tessellation', 'cellfraction', 'q1', 'q2', 'q3', 'q4',
                             'q5', 'q6', 'q7', 'q8', 'q9', 'q10', 'Cpe', 'anisotropic']
                     df = pd.DataFrame(conventional_feature, columns=dict)
                     df.to_excel(writer, sheet_name='conventional feature')
