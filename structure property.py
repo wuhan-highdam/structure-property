@@ -24,6 +24,7 @@ import numpy as np
 from numba import jit
 from sys import argv, exit
 from scipy import special
+from matplotlib import pyplot as plt
 from scipy.spatial import KDTree, ConvexHull
 
 
@@ -225,8 +226,8 @@ def compute_radial_value(delta_radius_input, distance_length_index_input, distan
 
 def compute_symmetry_functions(points, radius):
     # Compute symmetry function values of the whole granular system.
-    # Reference: [1] Structure-property relationships from universal signatures of plasticity in disordered solids.
-    #            [2] Identifying structural ﬂow defects in disordered solids using machine learning methods.
+    # Reference: [1] E. D. Cubuk, R. J. S. Ivancic, S. S. Schoenholz. Structure-property relationships from universal signatures of plasticity in disordered solids. DOI: 10.1126/science.aai8830. Science(2017)
+    #            [2] E. D. Cubuk,1, ∗ S. S. Schoenholz. Identifying structural ﬂow defects in disordered solids using machine learning methods.PRL(2015).
     # step1. set the constant
     particle_number = len(points)
     radius_for_input = radius[0]
@@ -519,7 +520,7 @@ def interstice_distribution_MRO(interstice_distance, interstice_area, interstice
 
 def compute_interstice_distribution(neighbour, points, radius):
     # compute interstice distribution of the whole granular system, include SRO(short range order), MRO(medium range order)
-    # Reference: [1] Structure-property relationships from universal signatures of plasticity in disordered solids.
+    # Reference: [1] Qi Wang1* & Anubhav Jain. A transferable machine-learning framework linking interstice distribution and plastic heterogeneity in metallic glasses. https://doi.org/10.1038/s41467-019-13511-9. NATURE COMMUNICATIONS.(2019)
     # step1. set constant
     particle_number = len(neighbour)
     # step2. modify origin voronoi neighbour
@@ -609,7 +610,7 @@ def compute_cellfraction(voro_input, radius_input):
 
 
 def compute_weight_i_fold_symm(voro_input, area_all_input):
-    # Reference: [1] Structure-property relationships from universal signatures of plasticity in disordered solids.
+    # Reference: [1] Qi Wang1* & Anubhav Jain. A transferable machine-learning framework linking interstice distribution and plastic heterogeneity in metallic glasses. https://doi.org/10.1038/s41467-019-13511-9. NATURE COMMUNICATIONS.(2019)
     particle_number = len(voro_input)
     area_weight_i_fold_symm = {}
     area_weight_i_fold_symm3_in = np.zeros(shape=[particle_number, ])
@@ -653,7 +654,7 @@ def compute_weight_i_fold_symm(voro_input, area_all_input):
 
 
 def compute_voronoi_idx(voro_input):
-    # Reference: [1] Structure-property relationships from universal signatures of plasticity in disordered solids.
+    # Reference: [1] Qi Wang1* & Anubhav Jain. A transferable machine-learning framework linking interstice distribution and plastic heterogeneity in metallic glasses. https://doi.org/10.1038/s41467-019-13511-9. NATURE COMMUNICATIONS.(2019)
     #            [2] H.L.Peng M.Z.Li* and W.H.Wang. Structural signature of plastic deformation in metallic glasses.
     particle_number = len(voro_input)
     voronoi_idx = {}
@@ -701,7 +702,7 @@ def compute_voronoi_idx(voro_input):
 
 def compute_boop(voronoi_neighbour, points, radius):
     # compute boo based on voronoi neighbour and cutoff neighbour
-    # Reference: [1] Structure-property relationships from universal signatures of plasticity in disordered solids.
+    # Reference: [1] Qi Wang1* & Anubhav Jain. A transferable machine-learning framework linking interstice distribution and plastic heterogeneity in metallic glasses. https://doi.org/10.1038/s41467-019-13511-9. NATURE COMMUNICATIONS.(2019)
     #            [2] https://pyboo.readthedocs.io/en/latest/intro.html
     # step1. compute boo based on voronoi neighbour
     bonds1 = []
@@ -803,7 +804,7 @@ def compute_boop(voronoi_neighbour, points, radius):
 
 
 def compute_modified_boop(voronoi, points, area_all):
-    # 4.Bond orientation order parameter(BOO) and modified BOO
+    # Bond orientation order parameter(BOO) and modified BOO
     #
     # A Python package to compute bond orientational order parameters as defined by Steinhardt Physical Review B (1983) doi:10.1103/PhysRevB.28.784.
     #
@@ -936,6 +937,26 @@ def compute_cluster_packing_efficiency_single_particle(simplice_input, points_no
 
 
 @jit(nopython=True)
+def Minkowski_tensor_W1_02(area, face_normal_vector, w1_02_array_input):
+    # compute anisotropic of the voronoi by Minkowski tensor W1_02.
+    # Reference: G. E. Schr¨oder-Turk1(a),W.Mickel1,M.Schr¨oter2. Disordered spherical bead packs are anisotropic. doi: 10.1209/0295-5075/90/34001 May.
+    w1_02_array = w1_02_array_input
+    for a in range(len(area)):
+        w1_02_array += np.outer(face_normal_vector[a], face_normal_vector[a]) * area[a]
+    return w1_02_array
+
+
+def anisotropic_by_W1_02(area_all, face_normal_vector):
+    anisotropic_coefficient = np.zeros(shape=[len(area_all), ])
+    for x in range(len(area_all)):
+        w1_02_array = np.zeros(shape=[3, 3])
+        W1_02 = Minkowski_tensor_W1_02(area_all[x], face_normal_vector[x], w1_02_array)
+        eig = np.linalg.eig(np.mat(W1_02))[0]
+        anisotropic_coefficient[x] = np.min(eig) / np.max(eig)
+    return anisotropic_coefficient
+
+
+@jit(nopython=True)
 def MRO(old_feature_SRO_array_input, boop_SRO_array_input, modified_boop_SRO_array, cpe_SRO_array_input, MRO_array_input,
         f_use_array_input, voronoi_neighbour_input, neigh_id_length_index_input):
     feature_MRO = np.empty_like(MRO_array_input)
@@ -1036,7 +1057,26 @@ def zip_feature(Coordination_number_by_Voronoi_tessellation, Coordination_number
     return feature_all
 
 
-def compute_conventional_feature(points, area_all, neighbour, voronoi, radius):
+def Selection_of_important_SRO_features(Coordination_number_by_Voronoi_tessellation, cellfraction,
+                                        modified_boop, Cpe, anisotropic):
+    feature_all = np.array(list(zip(Coordination_number_by_Voronoi_tessellation,
+                                    cellfraction,
+                                    modified_boop[:, 0],
+                                    modified_boop[:, 1],
+                                    modified_boop[:, 2],
+                                    modified_boop[:, 3],
+                                    modified_boop[:, 4],
+                                    modified_boop[:, 5],
+                                    modified_boop[:, 6],
+                                    modified_boop[:, 7],
+                                    modified_boop[:, 8],
+                                    modified_boop[:, 9],
+                                    Cpe,
+                                    anisotropic)))
+    return feature_all
+
+
+def compute_conventional_feature(points, area_all, face_normal_vector, neighbour, voronoi, radius, MRO_option):
     # step1. set constant
     particle_number = len(points)
     MRO_array = np.empty(shape=[265, particle_number])
@@ -1070,35 +1110,54 @@ def compute_conventional_feature(points, area_all, neighbour, voronoi, radius):
             neigh_id[x][y] = int(voronoi_neighbour_use[x][y])
     neigh_id_length_index = np.array(neigh_id_length_index)
     # step2. compute
-    # 2.1 coordination number by voronoi tessellation
-    Coordination_number_by_Voronoi_tessellation = np.zeros(shape=[len(points), ])
-    for x in range(len(voronoi_neighbour_use)):
-        Coordination_number_by_Voronoi_tessellation[x] = len(voronoi_neighbour_use[x])
-    # 2.2 weighted i-fold symm
-    area_weight_i_fold_symm = compute_weight_i_fold_symm(voronoi, area_all)
-    # 2.3 coordination number by cutoff distance
-    Coordination_number_by_cutoff_distance = compute_coordination_number_by_cutoff_distance(points, radius)
-    # 2.4 cell fraction
-    cellfraction = compute_cellfraction(voronoi, radius)
-    # 2.5 voronoi index and i-fold symm
-    Voronoi_idx, i_fold_symm = compute_voronoi_idx(voronoi)
-    # 2.6 zip feature above
-    feature_all = zip_feature(Coordination_number_by_Voronoi_tessellation, Coordination_number_by_cutoff_distance,
-                              Voronoi_idx, cellfraction, i_fold_symm, area_weight_i_fold_symm)
-    # 2.7.1 boop
-    boop_all = compute_boop(voronoi_neighbour, points, radius)
-    # 2.7.2 modified boop
-    modified_boop = compute_modified_boop(voronoi, points, area_all)
-    # 2.8 cluster packing efficiency
-    Cpe = compute_cluster_packing_efficiency(voronoi_neighbour_use, points, radius)
-    # 2.9 MRO
-    old_feature_SRO_array = feature_all
-    boop_SRO_array = boop_all
-    modified_boop_SRO_array = modified_boop
-    cpe_SRO_array = Cpe
-    feature_MRO_out = MRO(old_feature_SRO_array, boop_SRO_array, modified_boop_SRO_array, cpe_SRO_array, MRO_array,
-                          f_use_array, neigh_id, neigh_id_length_index)
-    return feature_MRO_out.T
+    if MRO_option:
+        # 2.1 coordination number by voronoi tessellation
+        Coordination_number_by_Voronoi_tessellation = np.zeros(shape=[len(points), ])
+        for x in range(len(voronoi_neighbour_use)):
+            Coordination_number_by_Voronoi_tessellation[x] = len(voronoi_neighbour_use[x])
+        # 2.2 weighted i-fold symm
+        area_weight_i_fold_symm = compute_weight_i_fold_symm(voronoi, area_all)
+        # 2.3 coordination number by cutoff distance
+        Coordination_number_by_cutoff_distance = compute_coordination_number_by_cutoff_distance(points, radius)
+        # 2.4 cell fraction
+        cellfraction = compute_cellfraction(voronoi, radius)
+        # 2.5 voronoi index and i-fold symm
+        Voronoi_idx, i_fold_symm = compute_voronoi_idx(voronoi)
+        # 2.6 zip feature above
+        feature_all = zip_feature(Coordination_number_by_Voronoi_tessellation, Coordination_number_by_cutoff_distance,
+                                  Voronoi_idx, cellfraction, i_fold_symm, area_weight_i_fold_symm)
+        # 2.7.1 boop
+        boop_all = compute_boop(voronoi_neighbour, points, radius)
+        # 2.7.2 modified boop
+        modified_boop = compute_modified_boop(voronoi, points, area_all)
+        # 2.8 cluster packing efficiency
+        Cpe = compute_cluster_packing_efficiency(voronoi_neighbour_use, points, radius)
+        # 2.9 anisotropic of voronoi cell by Minkowski tensor W1_02
+        # anisotropic = anisotropic_by_W1_02(area_all, face_normal_vector)
+        # 2.10 select MRO
+        old_feature_SRO_array = feature_all
+        boop_SRO_array = boop_all
+        modified_boop_SRO_array = modified_boop
+        cpe_SRO_array = Cpe
+        feature_out = MRO(old_feature_SRO_array, boop_SRO_array, modified_boop_SRO_array, cpe_SRO_array, MRO_array,
+                              f_use_array, neigh_id, neigh_id_length_index).T
+    else:
+        # 2.1 coordination number by voronoi tessellation
+        Coordination_number_by_Voronoi_tessellation = np.zeros(shape=[len(points), ])
+        for x in range(len(voronoi_neighbour_use)):
+            Coordination_number_by_Voronoi_tessellation[x] = len(voronoi_neighbour_use[x])
+        # 2.2 cell fraction
+        cellfraction = compute_cellfraction(voronoi, radius)
+        # 2.3 modified boop
+        modified_boop = compute_modified_boop(voronoi, points, area_all)
+        # 2.4 cluster packing efficiency
+        Cpe = compute_cluster_packing_efficiency(voronoi_neighbour_use, points, radius)
+        # 2.5 anisotropic of voronoi cell by Minkowski tensor W1_02
+        anisotropic = anisotropic_by_W1_02(area_all, face_normal_vector)
+        # 2.6
+        feature_out = Selection_of_important_SRO_features(Coordination_number_by_Voronoi_tessellation, cellfraction,
+                                                          modified_boop, Cpe, anisotropic)
+    return feature_out
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1154,10 +1213,24 @@ def compute_area(vertices_input, adjacent_cell_input, vertices_id_input, simplic
     return area_judge_in, area_in
 
 
-def eliminate_useless_adjacent_cell(voronoi):
+def compute_face_normal_vector(vertices_id, vertices, origin):
+    face_normal_vector = np.zeros(shape=[len(vertices_id), 3])
+    for i in range(len(vertices_id)):
+        normal = np.cross(vertices[int(vertices_id[i][0])] - vertices[int(vertices_id[i][1])],
+                          vertices[int(vertices_id[i][0])] - vertices[int(vertices_id[i][2])])
+        normal /= np.linalg.norm(normal)
+        # if np.dot(vertices[int(vertices_id[i][0])] - origin, normal) < 0:
+            # normal *= -1
+        for j in range(3):
+            face_normal_vector[i][j] = normal[j]
+    return face_normal_vector
+
+
+def eliminate_useless_adjacent_cell(voronoi, points):
     # 剔除面积小于平均面积百分之五的邻域点,这可能会造成互为邻域颗粒之间的不对称，后面的程序需要逐一处理
     adjacent_cell_all = []
     area_all_particle = []
+    face_normal_vector_all = []
     for x in range(len(voronoi)):
         vertices = voronoi[x]['vertices']
         ch = ConvexHull(vertices)
@@ -1176,17 +1249,19 @@ def eliminate_useless_adjacent_cell(voronoi):
                 adjacent_cell_use.append(adjacent_cell[y])
         adjacent_cell_all.append(adjacent_cell_use)
         area_all_particle.append(area)
-    return adjacent_cell_all, area_all_particle
+        face_normal_vector = compute_face_normal_vector(vert_id, vertices, points[x])
+        face_normal_vector_all.append(face_normal_vector)
+    return adjacent_cell_all, area_all_particle, face_normal_vector_all
 
 
 def compute_voronoi_neighbour(points, radius, limits):
     dispersion = 5 * radius[0]
     voronoi = pyvoro.compute_voronoi(points, limits, dispersion, periodic=[False] * 3)
-    neighbour, area = eliminate_useless_adjacent_cell(voronoi)
-    return voronoi, neighbour, area
+    neighbour, area, face_normal_vector = eliminate_useless_adjacent_cell(voronoi, points)
+    return voronoi, neighbour, area, face_normal_vector
 
 
-def main_function(path, path_output, scenario):
+def main_function(path, path_output, scenario, MRO_option, Compute_feature_category):
     # dump files
     mkdir(path_output)
     dump_path = path
@@ -1212,22 +1287,36 @@ def main_function(path, path_output, scenario):
         if idx == 0: continue
         # step1. Gets the prepared coordinates information and neighborhood information
         Par_coord, Par_radius, boundary = read_position_information(path, frame)
-        voronoi, voronoi_neighbour, area_all = compute_voronoi_neighbour(Par_coord, Par_radius, boundary)
+        voronoi, voronoi_neighbour, area_all, face_normal_vector = compute_voronoi_neighbour(Par_coord, Par_radius, boundary)
         print(60 * '*')
         print('The %d th frame' % frame)
         print(60 * '*')
-        # step2. Compute structure property(symmetry feature, interstice distribution and conventional feature)
-        symmetry_feature = compute_symmetry_functions(points=Par_coord, radius=Par_radius)
-        interstice_distribution = compute_interstice_distribution(neighbour=voronoi_neighbour, points=Par_coord,
-                                                                  radius=Par_radius)
-        conventional_feature = compute_conventional_feature(points=Par_coord, area_all=area_all,
-                                                            neighbour=voronoi_neighbour, voronoi=voronoi,
-                                                            radius=Par_radius)
-        # step3. Output structure property
+        # step2. Compute structure property(symmetry feature, interstice distribution and conventional feature) and output structure property
         writer = pd.ExcelWriter(path_output + '/feature_all-' + str(frame) + '.xlsx')
-        pd.DataFrame(symmetry_feature).to_excel(writer, sheet_name='symmetry feature')
-        pd.DataFrame(interstice_distribution).to_excel(writer, sheet_name='interstice distribution')
-        pd.DataFrame(conventional_feature).to_excel(writer, sheet_name='conventional feature')
+        for feature_category in Compute_feature_category:
+            if feature_category == 'symmetry_feature':
+                symmetry_feature = compute_symmetry_functions(points=Par_coord, radius=Par_radius)
+                pd.DataFrame(symmetry_feature).to_excel(writer, sheet_name='symmetry feature')
+            elif feature_category == 'interstice_distribution':
+                interstice_distribution = compute_interstice_distribution(neighbour=voronoi_neighbour, points=Par_coord,
+                                                                          radius=Par_radius)
+                pd.DataFrame(interstice_distribution).to_excel(writer, sheet_name='interstice distribution')
+            elif feature_category == 'conventional_feature':
+                if MRO_option:
+                    conventional_feature = compute_conventional_feature(points=Par_coord, area_all=area_all,
+                                                                        face_normal_vector = face_normal_vector,
+                                                                        neighbour=voronoi_neighbour, voronoi=voronoi,
+                                                                        radius=Par_radius, MRO_option=MRO_option)
+                    pd.DataFrame(conventional_feature).to_excel(writer, sheet_name='conventional feature')
+                else:
+                    conventional_feature = compute_conventional_feature(points=Par_coord, area_all=area_all,
+                                                                        face_normal_vector=face_normal_vector,
+                                                                        neighbour=voronoi_neighbour, voronoi=voronoi,
+                                                                        radius=Par_radius, MRO_option=MRO_option)
+                    dict = ['oordination_number_by_Voronoi_tessellation', 'cellfraction', 'q1', 'q2', 'q3', 'q4',
+                            'q5', 'q6', 'q7', 'q8', 'q9', 'q10', 'Cpe', 'anisotropic']
+                    df = pd.DataFrame(conventional_feature, columns=dict)
+                    df.to_excel(writer, sheet_name='conventional feature')
         writer.save()
         writer.close()
 
@@ -1238,9 +1327,12 @@ def main_function(path, path_output, scenario):
 if __name__ == '__main__':
     path_ = 'D:/循环剪切试验和机器学习/cyc5300fric01shearrate025/sort position'
     path_output_ = 'D:/循环剪切试验和机器学习/cyc5300fric01shearrate025'
-    scenario = 1000
+    scenario = 2499
     argList = argv
     argc = len(argList)
+    MRO_option = False
+    # Compute_feature_category = ['symmetry_feature', 'interstice_distribution', 'conventional_feature']
+    Compute_feature_category = ['conventional_feature']
     i = 0
     while (i < argc):
         if (argList[i][:2] == "-c"):
@@ -1283,4 +1375,4 @@ if __name__ == '__main__':
 
     print(path_)
     print("Running scenario:  %d" % scenario)
-    main_function(path_, path_output_, scenario)
+    main_function(path_, path_output_, scenario, MRO_option, Compute_feature_category)
