@@ -7,12 +7,18 @@ Particle based structural characterization.
 输出：包含三个sheet的xlsx表格文件。
       sheet1：symmetry feature 72个特征；
       sheet2：interstice distribution 60个特征；
-      sheet3：conventional feature 265个特征；
+      sheet3：conventional feature 265个特征（MRO）或者 14个特征（SRO）；
       
-      
+文件主函数： main_function(path_, path_output_, scenario, MRO_option, Compute_feature_category)   
+参数： 
+path_: 颗粒位置文件路径
+path_output_：文件输出路径
+scenario：待处理的frame数
+MRO_option：True 或者 False，判断是否计算输出传统结构序的MRO量。
+MRO_option = True时：
 sheet3包含：
 1、Coordination number by Voronoi tessellation、Coordination number by cutoff distance (SRO and MRO).
-Reference[1]: Okabe, A., Boots, B., Sugihara, K. & Chiu, S. N. Spatial Tesselations. Concepts and Applications                          of Voronoi Diagrams (John Wiley & Sons, 2009).
+Reference[1]: Okabe, A., Boots, B., Sugihara, K. & Chiu, S. N. Spatial Tesselations. Concepts and Applications                           of Voronoi Diagrams (John Wiley & Sons, 2009).
 
 2、Voronoi idx3…7(SRO and MEO).
 Reference[1]: Okabe, A., Boots, B., Sugihara, K. & Chiu, S. N. Spatial Tesselations. Concepts and Applications of                       Voronoi Diagrams (John Wiley & Sons, 2009).
@@ -32,3 +38,13 @@ Reference[5]: Clusters of polyhedra in spherical confinement. Proc. Natl. Acad. 
 
 8、Cluster packing efficiency(SRO and MRO).
 Reference[6]: Yang, L. et al. Atomic-scale mechanisms of the glass-forming ability in metallic glasses. Phys.                           Rev. Lett. 109, 105502 (2012).
+                  
+MRO_option = False时：
+sheet3包含：
+1、Coordination number by Voronoi tessellation
+2、Local volume fraction
+3、Modified BOO
+4、Cluster packing efficiency
+5、Anisotropic coefficient of voronoi cell
+                  
+Compute_feature_category: ['symmetry_feature', 'interstice_distribution', 'conventional_feature'] 需要计算的特征类别，以上三种可选择使用。
