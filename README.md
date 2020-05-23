@@ -2,6 +2,18 @@
 Particle based structural characterization.
 本文件用于计算颗粒体系的结构序特征。
 
+所需要的扩展包、版本。
+pyvoro-mmalahe  1.3.3
+pyboo           1.0.0
+requests        2.23.0
+openpyxl        3.0.3
+pandas          1.0.1
+numpy           1.18.1
+numba           0.48.0
+scipy           1.4.1
+xlrd            1.2.0
+matplotlib      3.2.0
+
 输入：直接由LIGGGHTS输出的颗粒位置文件。(dump-   .sample)
 
 输出：包含三个sheet的xlsx表格文件。
