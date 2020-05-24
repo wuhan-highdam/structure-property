@@ -65,4 +65,5 @@ Compute_feature_category: ['symmetry_feature', 'interstice_distribution', 'conve
 
 
 特别说明：
-文件可计算多分散颗粒体系，计算方法不确定为最优，可根据计算条件酌情更改（主要包括邻域颗粒的确定方法以及cutoff距离的选择）。
+1、文件可计算多分散颗粒体系，计算方法不确定为最优，可根据计算条件酌情更改（主要包括邻域颗粒的确定方法以及cutoff距离的选择）。
+2、文件第一部分对多分散颗粒体系计算symmetry functions有待完善，之后继续更新。
