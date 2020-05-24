@@ -4,7 +4,6 @@ structure property.py
 Script to compute the structure property of the whole system.
 Use conditions: [1] Cuboid sample
                 [2] Aperiodic boundary
-                [3] Monosize sample
 Usage: python structure-property.py -scenario 1000 -d50 0.02
 '''
 # Reference:
