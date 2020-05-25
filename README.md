@@ -26,6 +26,7 @@ matplotlib      3.2.0
 path_: 颗粒位置文件路径
 path_output_：文件输出路径
 scenario：待处理的frame数
+d50：待计算颗粒体系的d50
 MRO_option：True 或者 False，判断是否计算输出传统结构序的MRO量。
 MRO_option = True时：
 sheet3包含：
@@ -60,3 +61,9 @@ sheet3包含：
 5、Anisotropic coefficient of voronoi cell
                   
 Compute_feature_category: ['symmetry_feature', 'interstice_distribution', 'conventional_feature'] 需要计算的特征类别，以上三种可选择使用。
+
+
+
+特别说明：
+1、文件可计算多分散颗粒体系，计算方法不确定为最优，可根据计算条件酌情更改（主要包括邻域颗粒的确定方法以及cutoff距离的选择）。
+2、文件第一部分对多分散颗粒体系计算symmetry functions有待完善，之后继续更新。
