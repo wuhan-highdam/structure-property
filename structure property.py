@@ -839,7 +839,12 @@ def compute_modified_boop(voronoi, points, area_all):
     # [2] Xia, C. et al. The structural origin of the hard-sphere glass transition in granular packing. Nat. Commun. 6, 1–9 (2015).
     # [3] Teich, E. G., Van Anders, G., Klotsa, D., Dshemuchadse, J. & Glotzer, S. C. Clusters of polyhedra in spherical confinement. Proc. Natl. Acad. Sci. U. S. A. (2016). doi:10.1073/pnas.1524875113
     # [4] Leocmach, M. & Tanaka, H. Roles of icosahedral and crystal-like order in the hard spheres glass transition. Nat. Commun. (2012). doi:10.1038/ncomms1974
-    ql = np.zeros(shape=[len(points), 10])
+    modified_boop = {}
+    l_index = [4, 6, 8]
+    qlm_4 = np.zeros(shape=[len(points), 5]).astype(complex)
+    qlm_6 = np.zeros(shape=[len(points), 7]).astype(complex)
+    qlm_8 = np.zeros(shape=[len(points), 9]).astype(complex)
+    ql = np.zeros(shape=[len(points), 3])
     for i in range(len(points)):
         area_now = area_all[i]
         faces = voronoi[i]['faces']
@@ -866,9 +871,35 @@ def compute_modified_boop(voronoi, points, area_all):
                 area_weight[j] = area_now[j] / sum_area
             if adjacent_cell[j] < 0:
                 area_weight[j] = 0.0
-        for j in range(10):
-            ql[i][j] = boo_ql(points[i], pt_coord, area_weight, l=j + 1, modified=True)
-    return ql
+        for j in range(len(l_index)):
+            ql[i][j], qlm = boo_ql(points[i], pt_coord, area_weight, l=l_index[j], modified=True)
+            if l_index[j] == 4:
+                for k in range(5):
+                    qlm_4[i][k] = qlm[k + 4]
+            if l_index[j] == 6:
+                for k in range(7):
+                    qlm_6[i][k] = qlm[k + 6]
+            if l_index[j] == 8:
+                for k in range(9):
+                    qlm_8[i][k] = qlm[k + 8]
+    w4 = boo.wl(qlm_4)
+    w6 = boo.wl(qlm_6)
+    w8 = boo.wl(qlm_8)
+    # 对w4.w6.w8值进行缩放
+    # reference：Xia, C. et al. The structural origin of the hard-sphere glass transition in granular packing. Nat. Commun. 6, 1–9 (2015).
+    scale_4 = (9 / (4 * math.pi)) ** 1.5
+    scale_6 = (13 / (4 * math.pi)) ** 1.5
+    scale_8 = (17 / (4 * math.pi)) ** 1.5
+    w4_dot = [w4[x] / (ql[x][0] ** 3 * scale_4) for x in range(len(w4))]
+    w6_dot = [w6[x] / (ql[x][1] ** 3 * scale_6) for x in range(len(w6))]
+    w8_dot = [w6[x] / (ql[x][2] ** 3 * scale_8) for x in range(len(w8))]
+    wl = {}
+    wl['w4'] = np.array(w4_dot)
+    wl['w6'] = np.array(w6_dot)
+    wl['w8'] = np.array(w8_dot)
+    modified_boop['ql'] = ql
+    modified_boop['wl'] = wl
+    return modified_boop
 
 
 def boo_ql(origin, pt_coord, area_weight, l, modified):
@@ -898,7 +929,7 @@ def boo_ql(origin, pt_coord, area_weight, l, modified):
             qlm[i] /= pt_num
     ql = np.sum(np.abs(qlm) ** 2.0)
     ql = np.sqrt(4 * np.pi / (2 * l + 1) * ql)
-    return ql
+    return ql, qlm
 
 
 def compute_cluster_packing_efficiency(voronoi_neighbour_use_input, points_input, radius_input):
@@ -980,7 +1011,7 @@ def compute_anisotropy_w1_02(area_all, face_normal_vector):
 
 
 @jit(nopython=True)
-def MRO(old_feature_SRO_array_input, boop_SRO_array_input, modified_boop_SRO_array, cpe_SRO_array_input,
+def MRO(old_feature_SRO_array_input, boop_SRO_array_input, cpe_SRO_array_input,
         MRO_array_input,
         f_use_array_input, voronoi_neighbour_input, neigh_id_length_index_input):
     # medium range order
@@ -1044,6 +1075,7 @@ def MRO(old_feature_SRO_array_input, boop_SRO_array_input, modified_boop_SRO_arr
         feature_now = boop_SRO_array_input[:, aa + 20]
         for b in range(len(voronoi_neighbour_input)):
             feature_MRO[a][b] = feature_now[b]
+    '''
     for aa in range(10):
         a = aa * 5 + 215
         feature_now = modified_boop_SRO_array[:, aa]
@@ -1062,6 +1094,7 @@ def MRO(old_feature_SRO_array_input, boop_SRO_array_input, modified_boop_SRO_arr
                 square += (f_use[c] - mean) ** 2
             sqrt = math.sqrt((square / len(f_use)))
             feature_MRO[a + 4][b] = sqrt
+    '''
     return feature_MRO
 
 
@@ -1086,16 +1119,12 @@ def select_important_SRO_features(Coordination_number_by_Voronoi_tessellation, c
                                   modified_boop, Cpe, anisotropic):
     feature_all = np.array(list(zip(Coordination_number_by_Voronoi_tessellation,
                                     cellfraction,
-                                    modified_boop[:, 0],
-                                    modified_boop[:, 1],
-                                    modified_boop[:, 2],
-                                    modified_boop[:, 3],
-                                    modified_boop[:, 4],
-                                    modified_boop[:, 5],
-                                    modified_boop[:, 6],
-                                    modified_boop[:, 7],
-                                    modified_boop[:, 8],
-                                    modified_boop[:, 9],
+                                    modified_boop['ql'][:, 0],
+                                    modified_boop['ql'][:, 1],
+                                    modified_boop['ql'][:, 2],
+                                    modified_boop['wl']['w4'],
+                                    modified_boop['wl']['w6'],
+                                    modified_boop['wl']['w8'],
                                     Cpe,
                                     anisotropic)))
     return feature_all
@@ -1105,7 +1134,7 @@ def compute_conventional_feature(points, area_all, face_normal_vector, neighbour
                                  cutoff_distance):
     # step1. set constant
     particle_number = len(points)
-    MRO_array = np.empty(shape=[265, particle_number])
+    MRO_array = np.empty(shape=[215, particle_number])
     f_use_array = np.empty(shape=[particle_number, ])
     # step1. modify voronoi neighbour information
     voronoi_neighbour = []
@@ -1155,7 +1184,7 @@ def compute_conventional_feature(points, area_all, face_normal_vector, neighbour
         # 2.7.1 boop
         boop_all = compute_boop(voronoi_neighbour, points, cutoff_distance)
         # 2.7.2 modified boop
-        modified_boop = compute_modified_boop(voronoi, points, area_all)
+        # modified_boop = compute_modified_boop(voronoi, points, area_all)
         # 2.8 cluster packing efficiency
         cpe = compute_cluster_packing_efficiency(voronoi_neighbour, points, radius)
         # 2.9 anisotropic of voronoi cell by Minkowski tensor W1_02
@@ -1163,10 +1192,10 @@ def compute_conventional_feature(points, area_all, face_normal_vector, neighbour
         # 2.10 select MRO
         old_feature_SRO_array = feature_all
         boop_SRO_array = boop_all
-        modified_boop_SRO_array = modified_boop
+        # modified_boop_SRO_array = modified_boop
         cpe_SRO_array = cpe
-        feature_out = MRO(old_feature_SRO_array, boop_SRO_array, modified_boop_SRO_array, cpe_SRO_array, MRO_array,
-                          f_use_array, neigh_id, neigh_id_length_index).T
+        feature_out = MRO(old_feature_SRO_array, boop_SRO_array, cpe_SRO_array, MRO_array, f_use_array, neigh_id,
+                          neigh_id_length_index).T
     else:
         # 2.1 coordination number by voronoi tessellation
         coordination_number_voronoi_tessellation = np.zeros(shape=[len(points), ])
@@ -1353,8 +1382,8 @@ def main_function(path, path_output, scenario, MRO_option, compute_feature_categ
                                                                         neighbour=voronoi_neighbour, voronoi=voronoi,
                                                                         radius=Par_radius, MRO_option=MRO_option,
                                                                         cutoff_distance=cutoff_distance)
-                    columns_dict = ['coordination_number_by_Voronoi_tessellation', 'cellfraction', 'q1', 'q2', 'q3',
-                                    'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10', 'Cpe', 'anisotropic']
+                    columns_dict = ['coordination_number_voronoi_tessellation', 'cellfraction', 'q4', 'q6', 'q8',
+                                    'w4', 'w6', 'w8', 'Cpe', 'anisotropic']
                     df = pd.DataFrame(conventional_feature, columns=columns_dict)
                     df.to_excel(writer, sheet_name='conventional feature')
         writer.save()
@@ -1372,7 +1401,6 @@ if __name__ == '__main__':
     MRO_option = False
     # Compute_feature_category = ['symmetry_feature', 'interstice_distribution', 'conventional_feature']
     compute_feature_category = ['conventional_feature']
-
     argList = argv
     argc = len(argList)
     n = 0
@@ -1387,7 +1415,6 @@ if __name__ == '__main__':
             print(__doc__)
             exit(0)
         n += 1
-
     print(path_)
     print("Running scenario:  %d" % scenario)
     main_function(path_, path_output_, scenario, MRO_option, compute_feature_category, d50)
