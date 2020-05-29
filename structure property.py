@@ -890,13 +890,13 @@ def compute_modified_boop(voronoi, points, area_all):
     scale_4 = (9 / (4 * math.pi)) ** 1.5
     scale_6 = (13 / (4 * math.pi)) ** 1.5
     scale_8 = (17 / (4 * math.pi)) ** 1.5
-    w4_dot = [w4[x] / (ql[x][0] ** 3 * scale_4) for x in range(len(w4))]
-    w6_dot = [w6[x] / (ql[x][1] ** 3 * scale_6) for x in range(len(w6))]
-    w8_dot = [w6[x] / (ql[x][2] ** 3 * scale_8) for x in range(len(w8))]
+    w4_hat = [w4[x] / (ql[x][0] ** 3 * scale_4) for x in range(len(w4))]
+    w6_hat = [w6[x] / (ql[x][1] ** 3 * scale_6) for x in range(len(w6))]
+    w8_hat = [w6[x] / (ql[x][2] ** 3 * scale_8) for x in range(len(w8))]
     wl = {}
-    wl['w4'] = np.array(w4_dot)
-    wl['w6'] = np.array(w6_dot)
-    wl['w8'] = np.array(w8_dot)
+    wl['w4_hat'] = np.array(w4_hat)
+    wl['w6_hat'] = np.array(w6_hat)
+    wl['w8_hat'] = np.array(w8_hat)
     modified_boop['ql'] = ql
     modified_boop['wl'] = wl
     return modified_boop
@@ -1122,9 +1122,9 @@ def select_important_SRO_features(Coordination_number_by_Voronoi_tessellation, c
                                     modified_boop['ql'][:, 0],
                                     modified_boop['ql'][:, 1],
                                     modified_boop['ql'][:, 2],
-                                    modified_boop['wl']['w4'],
-                                    modified_boop['wl']['w6'],
-                                    modified_boop['wl']['w8'],
+                                    modified_boop['wl']['w4_hat'],
+                                    modified_boop['wl']['w6_hat'],
+                                    modified_boop['wl']['w8_hat'],
                                     Cpe,
                                     anisotropic)))
     return feature_all
@@ -1383,7 +1383,7 @@ def main_function(path, path_output, scenario, MRO_option, compute_feature_categ
                                                                         radius=Par_radius, MRO_option=MRO_option,
                                                                         cutoff_distance=cutoff_distance)
                     columns_dict = ['coordination_number_voronoi_tessellation', 'cellfraction', 'q4', 'q6', 'q8',
-                                    'w4', 'w6', 'w8', 'Cpe', 'anisotropic']
+                                    'w4_hat', 'w6_hat', 'w8_hat', 'Cpe', 'anisotropic']
                     df = pd.DataFrame(conventional_feature, columns=columns_dict)
                     df.to_excel(writer, sheet_name='conventional feature')
         writer.save()
